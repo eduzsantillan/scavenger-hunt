@@ -1,0 +1,99 @@
+# Node.js dependencies
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock
+
+# TypeScript build output
+dist/
+build/
+*.tsbuildinfo
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+
+# AWS Lambda deployment packages
+*.zip
+serverless/.serverless/
+serverless/node_modules/
+
+# Terraform
+infra/.terraform/
+infra/.terraform.lock.hcl
+infra/terraform.tfstate
+infra/terraform.tfstate.backup
+infra/.terraform.tfstate.lock.info
+infra/tfdestroyplan
+infra/tfplan
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+*.sublime-project
+*.sublime-workspace
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/
+.tmp/
+
+# AWS SAM
+.aws-sam/
+samconfig.toml
+
+# DynamoDB Local
+.dynamodb/
+
+# Serverless
+.serverless/
+
+# Webpack
+.webpack/
+
+# Debug logs
+debug.log
+
+# Build artifacts
+*.js.map
+*.d.ts
+
+# Cache directories
+.cache/
+.parcel-cache/
+.npm/
+.eslintcache
+.stylelintcache
+
+# Python script
+aws_resources_data.json
+aws_resources_report.html
+report.py
+
+# Test
+test/

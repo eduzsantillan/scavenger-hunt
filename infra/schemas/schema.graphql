@@ -1,0 +1,35 @@
+type Result {
+  imageKey: ID!
+  userId: String!
+  isMatch: Boolean!
+  matchedItems: [String]
+  allDetectedLabels: [String]
+  timestamp: AWSTimestamp!
+  processedAt: String
+}
+
+type Query {
+  getUserResults(userId: String!): [Result]
+  getResult(imageKey: String!, userId: String!): Result
+}
+
+type Mutation {
+  addResult(
+    imageKey: ID!,
+    userId: String!,
+    isMatch: Boolean!,
+    matchedItems: [String],
+    allDetectedLabels: [String]
+  ): Result
+}
+
+type Subscription {
+  onResultAdded(userId: String!): Result
+    @aws_subscribe(mutations: ["addResult"])
+}
+
+schema {
+  query: Query
+  mutation: Mutation
+  subscription: Subscription
+}
