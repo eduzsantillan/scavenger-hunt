@@ -32,7 +32,7 @@ export class UploadController {
 
   uploadImage = async (req: Request, res: Response) => {
     try {
-      const { sessionId, itemId } = req.params;
+      const { teamId, itemId } = req.params;
       const file = req.file;
       if (!file) {
         return res.status(400).json({ message: "No image file provided" });
@@ -46,9 +46,10 @@ export class UploadController {
       }
 
       const fileExtension = file.originalname.split(".").pop();
-      const key = `${sessionId}/${itemId}/image.${fileExtension}`;
-      const requiredList = item.synonyms;
-      requiredList.push(item.name);
+      const key = `${teamId}/${itemId}/image.${fileExtension}`;
+      const requiredList = [];
+      requiredList.push(item.name.toLowerCase());
+      requiredList.push(... item.synonyms)
 
       const command = new PutObjectCommand({
         Bucket: this.bucketName,

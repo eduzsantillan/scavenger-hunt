@@ -7,10 +7,10 @@ const router = Router();
 const itemController = new ItemController();
 
 router.get(
-  "/:themeId",
-  [param("themeId").isString().notEmpty()],
+  "/:itemId",
+  [param("itemId").isString().notEmpty()],
   validateRequest,
-  itemController.getItemsByThemeId
+  itemController.getItemById
 );
 
 export default router;

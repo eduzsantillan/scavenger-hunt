@@ -1,7 +1,11 @@
 export interface Item {
   itemId: string;
-  themeId: string;
+  categoryId: string;
   name: string;
-  description: string;
+  sciName: string;
+  habitat: string;
+  diet: string;
+  biology: string;
+  funFact: string;
   synonyms: string[];
 }

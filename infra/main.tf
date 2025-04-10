@@ -18,6 +18,18 @@ variable "app_name" {
   type        = string
 }
 
+variable "eb_solution_stack_name" {
+  description = "Elastic Beanstalk solution stack name"
+  default     = "64bit Amazon Linux 2023 v6.5.0 running Node.js 18"
+  type        = string
+}
+
+variable "eb_instance_type" {
+  description = "EC2 instance type for Elastic Beanstalk"
+  default     = "t2.micro"
+  type        = string
+}
+
 # S3 bucket for image uploads
 resource "aws_s3_bucket" "image_bucket" {
   bucket = "${var.app_name}-images-bucket"
@@ -52,19 +64,19 @@ resource "aws_sns_topic" "results_topic" {
   name = "${var.app_name}-results"
 }
 
-# DynamoDB table for storing theme data
-resource "aws_dynamodb_table" "theme_table" {
-  name           = "${var.app_name}-themes"
+# DynamoDB table for storing category data
+resource "aws_dynamodb_table" "category_table" {
+  name           = "${var.app_name}-categories"
   billing_mode   = "PAY_PER_REQUEST"  # On-demand capacity for free tier
-  hash_key       = "themeId"
+  hash_key       = "category_id"
 
   attribute {
-    name = "themeId"
+    name = "category_id"
     type = "S"
   }
 
   tags = {
-    Name = "${var.app_name}-themes-table"
+    Name = "${var.app_name}-categories-table"
   }
 }
 
@@ -72,23 +84,23 @@ resource "aws_dynamodb_table" "theme_table" {
 resource "aws_dynamodb_table" "item_table" {
   name           = "${var.app_name}-items"
   billing_mode   = "PAY_PER_REQUEST"  # On-demand capacity for free tier
-  hash_key       = "itemId"
-  range_key      = "themeId"
+  hash_key       = "item_id"
+  range_key      = "category_id"
 
   attribute {
-    name = "itemId"
+    name = "item_id"
     type = "S"
   }
 
   attribute {
-    name = "themeId"
+    name = "category_id"
     type = "S"
   }
 
-  # Global Secondary Index for querying items by themeId
+  # Global Secondary Index for querying items by categoryId
   global_secondary_index {
-    name               = "ThemeIdIndex"
-    hash_key           = "themeId"
+    name               = "CategoryIdIndex"
+    hash_key           = "category_id"
     projection_type    = "ALL"
     write_capacity     = 0
     read_capacity      = 0
@@ -99,25 +111,107 @@ resource "aws_dynamodb_table" "item_table" {
   }
 }
 
-# DynamoDB table for storing session data
-resource "aws_dynamodb_table" "session_table" {
-  name           = "${var.app_name}-session"
+# DynamoDB table for storing user data
+resource "aws_dynamodb_table" "user_table" {
+  name           = "${var.app_name}-users"
   billing_mode   = "PAY_PER_REQUEST"  # On-demand capacity for free tier
-  hash_key       = "sessionId"
-  range_key      = "itemId"
+  hash_key       = "user_id"
 
   attribute {
-    name = "sessionId"
+    name = "user_id"
     type = "S"
   }
 
   attribute {
-    name = "itemId"
+    name = "email"
+    type = "S"
+  }
+
+  # Global Secondary Index for querying users by email
+  global_secondary_index {
+    name               = "EmailIndex"
+    hash_key           = "email"
+    projection_type    = "ALL"
+    write_capacity     = 0
+    read_capacity      = 0
+  }
+
+  tags = {
+    Name = "${var.app_name}-users-table"
+  }
+}
+
+# DynamoDB table for storing team data
+resource "aws_dynamodb_table" "team_table" {
+  name           = "${var.app_name}-teams"
+  billing_mode   = "PAY_PER_REQUEST"  # On-demand capacity for free tier
+  hash_key       = "team_id"
+
+  attribute {
+    name = "team_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "code"
+    type = "S"
+  }
+
+  # Global Secondary Index for querying teams by code
+  global_secondary_index {
+    name               = "CodeIndex"
+    hash_key           = "code"
+    projection_type    = "ALL"
+    write_capacity     = 0
+    read_capacity      = 0
+  }
+
+  tags = {
+    Name = "${var.app_name}-teams-table"
+  }
+}
+
+# DynamoDB table for storing team_user relationships
+resource "aws_dynamodb_table" "team_user_table" {
+  name           = "${var.app_name}-team-users"
+  billing_mode   = "PAY_PER_REQUEST"  # On-demand capacity for free tier
+  hash_key       = "team_id"
+  range_key      = "user_id"
+
+  attribute {
+    name = "team_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "user_id"
     type = "S"
   }
 
   tags = {
-    Name = "${var.app_name}-session-table"
+    Name = "${var.app_name}-team-users-table"
+  }
+}
+
+# DynamoDB table for storing team_item data (collected items)
+resource "aws_dynamodb_table" "team_item_table" {
+  name           = "${var.app_name}-team-items"
+  billing_mode   = "PAY_PER_REQUEST"  # On-demand capacity for free tier
+  hash_key       = "team_id"
+  range_key      = "item_id"
+
+  attribute {
+    name = "team_id"
+    type = "S"
+  }
+
+  attribute {
+    name = "item_id"
+    type = "S"
+  }
+
+  tags = {
+    Name = "${var.app_name}-team-items-table"
   }
 }
 
@@ -198,10 +292,15 @@ resource "aws_iam_policy" "consumer_lambda_policy" {
         ]
         Effect   = "Allow"
         Resource = [
-          aws_dynamodb_table.session_table.arn,
-          aws_dynamodb_table.theme_table.arn,
+          aws_dynamodb_table.user_table.arn,
+          aws_dynamodb_table.category_table.arn,
           aws_dynamodb_table.item_table.arn,
-          "${aws_dynamodb_table.item_table.arn}/index/*"
+          aws_dynamodb_table.team_table.arn,
+          aws_dynamodb_table.team_user_table.arn,
+          aws_dynamodb_table.team_item_table.arn,
+          "${aws_dynamodb_table.user_table.arn}/index/*",
+          "${aws_dynamodb_table.item_table.arn}/index/*",
+          "${aws_dynamodb_table.team_table.arn}/index/*"
         ]
       }
     ]
@@ -248,9 +347,12 @@ resource "aws_lambda_function" "update_database_function" {
 
   environment {
     variables = {
-      SESSION_TABLE_NAME = aws_dynamodb_table.session_table.name,
-      THEMES_TABLE_NAME = aws_dynamodb_table.theme_table.name,
-      ITEMS_TABLE_NAME = aws_dynamodb_table.item_table.name
+      # USERS_TABLE_NAME = aws_dynamodb_table.user_table.name,
+      # CATEGORIES_TABLE_NAME = aws_dynamodb_table.category_table.name,
+      # ITEMS_TABLE_NAME = aws_dynamodb_table.item_table.name,
+      TEAMS_TABLE_NAME = aws_dynamodb_table.team_table.name,
+      # TEAM_USERS_TABLE_NAME = aws_dynamodb_table.team_user_table.name,
+      TEAM_ITEMS_TABLE_NAME = aws_dynamodb_table.team_item_table.name
     }
   }
 }
@@ -292,6 +394,160 @@ resource "aws_lambda_permission" "allow_sns" {
   source_arn    = aws_sns_topic.results_topic.arn
 }
 
+# Elastic Beanstalk Application
+resource "aws_elastic_beanstalk_application" "eb_app" {
+  name        = "${var.app_name}-app"
+  description = "${var.app_name} backend application"
+}
+
+# Elastic Beanstalk IAM Role
+resource "aws_iam_role" "eb_service_role" {
+  name = "${var.app_name}-eb-service-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "elasticbeanstalk.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+# Attach managed policies to the Elastic Beanstalk service role
+resource "aws_iam_role_policy_attachment" "eb_enhanced_health" {
+  role       = aws_iam_role.eb_service_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSElasticBeanstalkEnhancedHealth"
+}
+
+resource "aws_iam_role_policy_attachment" "eb_service" {
+  role       = aws_iam_role.eb_service_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSElasticBeanstalkService"
+}
+
+# EC2 Instance Profile for Elastic Beanstalk
+resource "aws_iam_instance_profile" "eb_instance_profile" {
+  name = "${var.app_name}-eb-instance-profile"
+  role = aws_iam_role.eb_ec2_role.name
+}
+
+resource "aws_iam_role" "eb_ec2_role" {
+  name = "${var.app_name}-eb-ec2-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+# Attach policies to the EC2 instance profile role
+resource "aws_iam_role_policy_attachment" "eb_web_tier" {
+  role       = aws_iam_role.eb_ec2_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier"
+}
+
+resource "aws_iam_role_policy_attachment" "eb_dynamodb_access" {
+  role       = aws_iam_role.eb_ec2_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
+}
+
+resource "aws_iam_role_policy_attachment" "eb_s3_access" {
+  role       = aws_iam_role.eb_ec2_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+}
+
+# Elastic Beanstalk Environment
+resource "aws_elastic_beanstalk_environment" "eb_env" {
+  name                = "${var.app_name}-env"
+  application         = aws_elastic_beanstalk_application.eb_app.name
+  solution_stack_name = var.eb_solution_stack_name
+  tier                = "WebServer"
+  
+  setting {
+    namespace = "aws:autoscaling:launchconfiguration"
+    name      = "IamInstanceProfile"
+    value     = aws_iam_instance_profile.eb_instance_profile.name
+  }
+  
+  setting {
+    namespace = "aws:elasticbeanstalk:environment"
+    name      = "ServiceRole"
+    value     = aws_iam_role.eb_service_role.name
+  }
+  
+  setting {
+    namespace = "aws:ec2:instances"
+    name      = "InstanceTypes"
+    value     = var.eb_instance_type
+  }
+  
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "AWS_REGION"
+    value     = var.aws_region
+  }
+  
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "DYNAMODB_USERS_TABLE"
+    value     = aws_dynamodb_table.user_table.name
+  }
+  
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "DYNAMODB_TEAMS_TABLE"
+    value     = aws_dynamodb_table.team_table.name
+  }
+  
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "DYNAMODB_TEAM_USERS_TABLE"
+    value     = aws_dynamodb_table.team_user_table.name
+  }
+  
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "DYNAMODB_ITEMS_TABLE"
+    value     = aws_dynamodb_table.item_table.name
+  }
+  
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "DYNAMODB_TEAM_ITEMS_TABLE"
+    value     = aws_dynamodb_table.team_item_table.name
+  }
+  
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "DYNAMODB_CATEGORIES_TABLE"
+    value     = aws_dynamodb_table.category_table.name
+  }
+  
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "S3_BUCKET_NAME"
+    value     = aws_s3_bucket.image_bucket.bucket
+  }
+}
+
+# Output the Elastic Beanstalk URL
+output "elastic_beanstalk_url" {
+  value = "http://${aws_elastic_beanstalk_environment.eb_env.cname}"
+  description = "URL of the Elastic Beanstalk environment"
+}
+
 # AppSync API for frontend integration
 resource "aws_appsync_graphql_api" "scavenger_hunt_api" {
   name                = "${var.app_name}-api"
@@ -310,8 +566,20 @@ output "s3_bucket_name" {
   value = aws_s3_bucket.image_bucket.bucket
 }
 
-output "dynamodb_table_name" {
-  value = aws_dynamodb_table.session_table.name
+output "users_table_name" {
+  value = aws_dynamodb_table.user_table.name
+}
+
+output "categories_table_name" {
+  value = aws_dynamodb_table.category_table.name
+}
+
+output "items_table_name" {
+  value = aws_dynamodb_table.item_table.name
+}
+
+output "teams_table_name" {
+  value = aws_dynamodb_table.team_table.name
 }
 
 output "sns_topic_arn" {

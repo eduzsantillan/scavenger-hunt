@@ -59,14 +59,14 @@ export const handler = async (event) => {
     });
     const isMatch = matchedItems.length > 0;
     
-    //sessionId/itemId/image.jpg
-    const sessionId = s3Key.split('/')[0];
+    // teamId/itemId/image.jpg
+    const teamId = s3Key.split('/')[0];
     const itemId = s3Key.split('/')[1];
 
 
     const message = {
       imageKey: s3Key,
-      sessionId: sessionId,
+      teamId: teamId,
       itemId: itemId,
       isMatch: isMatch,
       matchedItems: matchedItems,

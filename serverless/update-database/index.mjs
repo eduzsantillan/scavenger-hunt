@@ -1,8 +1,53 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, UpdateCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, UpdateCommand, GetCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 
 const dynamoClient = new DynamoDBClient();
 const dynamoDocClient = DynamoDBDocumentClient.from(dynamoClient);
+
+async function checkAndUpdateTeamCompletion(teamId) {
+  try {
+    const queryParams = {
+      TableName: process.env.TEAM_ITEMS_TABLE_NAME,
+      KeyConditionExpression: "team_id = :teamId",
+      ExpressionAttributeValues: {
+        ":teamId": teamId
+      }
+    };
+    
+    const queryCommand = new QueryCommand(queryParams);
+    const teamItemsResult = await dynamoDocClient.send(queryCommand);
+    
+    if (!teamItemsResult.Items || teamItemsResult.Items.length === 0) {
+      console.log(`No team items found for team ${teamId}`);
+      return;
+    }
+    
+    const allCollected = teamItemsResult.Items.every(item => item.is_collected === true);
+    
+    if (allCollected) {
+      console.log(`All items collected for team ${teamId}. Updating team completion status.`);
+      
+      const updateTeamParams = {
+        TableName: process.env.TEAMS_TABLE_NAME,
+        Key: {
+          team_id: teamId
+        },
+        UpdateExpression: "SET is_completed = :isCompleted",
+        ExpressionAttributeValues: {
+          ":isCompleted": true
+        }
+      };
+      
+      const updateTeamCommand = new UpdateCommand(updateTeamParams);
+      await dynamoDocClient.send(updateTeamCommand);
+      console.log(`Successfully updated team ${teamId} completion status to true`);
+    } else {
+      console.log(`Not all items collected for team ${teamId}. Team completion status unchanged.`);
+    }
+  } catch (error) {
+    console.error("Error checking team completion status:", error);
+  }
+}
 
 export const handler = async (event) => {
   try {
@@ -12,14 +57,15 @@ export const handler = async (event) => {
       throw new Error("Invalid SNS message");
     }
 
-    const { imageKey, sessionId, itemId, allDetectedLabels, isMatch } = message;
+    const { imageKey, teamId, itemId, allDetectedLabels, isMatch } = message;
     const isCollected = isMatch === true;
-    console.log(`Updating session table for sessionId: ${sessionId}, itemId: ${itemId}, isCollected: ${isCollected}`);
+    console.log(`Updating team_items table for teamId: ${teamId}, itemId: ${itemId}, isCollected: ${isCollected}`);
+    
     const getParams = {
-      TableName: process.env.SESSION_TABLE_NAME,
+      TableName: process.env.TEAM_ITEMS_TABLE_NAME,
       Key: {
-        sessionId,
-        itemId
+        team_id: teamId,
+        item_id: itemId
       }
     };
     
@@ -27,16 +73,15 @@ export const handler = async (event) => {
     const existingRecord = await dynamoDocClient.send(getCommand);
     
     const updateParams = {
-      TableName: process.env.SESSION_TABLE_NAME,
+      TableName: process.env.TEAM_ITEMS_TABLE_NAME,
       Key: {
-        sessionId,
-        itemId
+        team_id: teamId,
+        item_id: itemId
       },
-      UpdateExpression: "SET isCollected = :isCollected, processedAt = :processedAt, allDetectedLabels = :allDetectedLabels, imageKey = :imageKey",
+      UpdateExpression: "SET is_collected = :isCollected, labels_detected = :labelsDetected, img_key = :imageKey",
       ExpressionAttributeValues: {
         ":isCollected": isCollected,
-        ":processedAt": new Date().toISOString(),
-        ":allDetectedLabels": allDetectedLabels,
+        ":labelsDetected": allDetectedLabels,
         ":imageKey": imageKey
       },
       ReturnValues: "ALL_NEW"
@@ -44,13 +89,17 @@ export const handler = async (event) => {
     
     const updateCommand = new UpdateCommand(updateParams);
     const result = await dynamoDocClient.send(updateCommand);
-    console.log("Successfully updated session record in DynamoDB");
+    console.log("Successfully updated team item record in DynamoDB");
+    
+    if (isCollected) {
+      await checkAndUpdateTeamCompletion(teamId);
+    }
 
     return {
       statusCode: 200,
       body: JSON.stringify({
-        message: "Session record updated successfully",
-        sessionId,
+        message: "Team item record updated successfully",
+        teamId,
         itemId,
         isCollected,
       }),
@@ -59,7 +108,7 @@ export const handler = async (event) => {
     console.error("Error:", error);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: "Failed to update session record" }),
+      body: JSON.stringify({ error: "Failed to update team item record" }),
     };
   }
 };

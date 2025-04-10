@@ -85,9 +85,68 @@ if [ "$ACTION" = "deploy" ]; then
     terraform apply tfplan
     
     # Output important information
-    echo "Deployment completed successfully!"
+    echo "Infrastructure deployment completed successfully!"
     echo "Important outputs:"
     terraform output
+    
+    # Deploy backend to Elastic Beanstalk
+    echo "\nDeploying backend to Elastic Beanstalk..."
+    cd "$PROJECT_ROOT/backend"
+    
+    # Build the backend application
+    echo "Building backend application..."
+    npm install
+    npm run build
+    
+    # Create a deployment package
+    echo "Creating Elastic Beanstalk deployment package..."
+    EB_DEPLOY_DIR="$BUILD_DIR/eb-deploy"
+    mkdir -p "$EB_DEPLOY_DIR"
+    
+    # Copy necessary files to the deployment directory
+    cp -r dist "$EB_DEPLOY_DIR/"
+    cp -r .ebextensions "$EB_DEPLOY_DIR/"
+    cp package.json "$EB_DEPLOY_DIR/"
+    cp package-lock.json "$EB_DEPLOY_DIR/"
+    cp Procfile "$EB_DEPLOY_DIR/"
+    
+    # Create deployment zip file
+    cd "$EB_DEPLOY_DIR"
+    zip -r "$BUILD_DIR/backend-deploy.zip" .
+    
+    # Deploy to Elastic Beanstalk
+    cd "$PROJECT_ROOT/backend"
+    
+    # Get the Elastic Beanstalk environment name from Terraform output
+    EB_ENV_NAME="scavenger-hunt-env"
+    EB_APP_NAME="scavenger-hunt-app"
+    EB_REGION="us-east-1"
+    VERSION_LABEL="v$(date +%Y%m%d%H%M%S)"
+    
+    # Create S3 bucket for deployment if it doesn't exist
+    S3_BUCKET="${EB_APP_NAME}-deployments"
+    
+    echo "Creating/checking S3 bucket for deployment packages..."
+    aws s3api head-bucket --bucket "$S3_BUCKET" --region "$EB_REGION" 2>/dev/null || \
+    aws s3 mb "s3://$S3_BUCKET" --region "$EB_REGION"
+    
+    # Upload the deployment package to S3
+    echo "Uploading deployment package to S3..."
+    aws s3 cp "$BUILD_DIR/backend-deploy.zip" "s3://$S3_BUCKET/$VERSION_LABEL.zip" --region "$EB_REGION"
+    
+    echo "Deploying to Elastic Beanstalk environment: $EB_ENV_NAME"
+    aws elasticbeanstalk create-application-version \
+      --application-name "$EB_APP_NAME" \
+      --version-label "$VERSION_LABEL" \
+      --source-bundle S3Bucket="$S3_BUCKET",S3Key="$VERSION_LABEL.zip" \
+      --region "$EB_REGION"
+    
+    aws elasticbeanstalk update-environment \
+      --environment-name "$EB_ENV_NAME" \
+      --version-label "$VERSION_LABEL" \
+      --region "$EB_REGION"
+    
+    echo "Backend deployment to Elastic Beanstalk initiated."
   else
     echo "Deployment cancelled."
   fi
@@ -100,24 +159,78 @@ if [ "$ACTION" = "deploy" ]; then
 elif [ "$ACTION" = "destroy" ]; then
   echo "Starting destruction of Scavenger Hunt infrastructure..."
   
-  # Change to infrastructure directory
-  cd "$PROJECT_ROOT/infra"
-  
-  # Initialize Terraform (if needed)
-  echo "Initializing Terraform..."
-  terraform init
-  
-  # Plan destruction
-  echo "Planning infrastructure destruction..."
-  terraform plan -destroy -out=tfdestroyplan
+  # Define Elastic Beanstalk environment variables
+  EB_ENV_NAME="scavenger-hunt-env"
+  EB_APP_NAME="scavenger-hunt-app"
+  EB_REGION="us-east-1"
+  S3_BUCKET="${EB_APP_NAME}-deployments"
   
   # Ask for confirmation before destroying
-  echo "WARNING: This will destroy all resources managed by Terraform."
+  echo "WARNING: This will destroy all resources including Elastic Beanstalk environment and application."
   read -p "Are you sure you want to destroy all resources? (y/n) " -n 1 -r
   echo
   if [[ $REPLY =~ ^[Yy]$ ]]; then
+    # Check if Elastic Beanstalk environment exists before attempting to terminate it
+    echo "Checking for Elastic Beanstalk environment..."
+    if aws elasticbeanstalk describe-environments \
+      --environment-names "$EB_ENV_NAME" \
+      --region "$EB_REGION" \
+      --query "Environments[?Status!='Terminated'].EnvironmentName" \
+      --output text | grep -q "$EB_ENV_NAME"; then
+      
+      echo "Elastic Beanstalk environment found. Terminating..."
+      aws elasticbeanstalk terminate-environment \
+        --environment-name "$EB_ENV_NAME" \
+        --region "$EB_REGION"
+      
+      echo "Waiting for Elastic Beanstalk environment to terminate..."
+      aws elasticbeanstalk wait environment-terminated \
+        --environment-name "$EB_ENV_NAME" \
+        --region "$EB_REGION"
+    else
+      echo "No active Elastic Beanstalk environment found. Skipping termination."
+    fi
+    
+    # Check if Elastic Beanstalk application exists before attempting to delete it
+    echo "Checking for Elastic Beanstalk application..."
+    if aws elasticbeanstalk describe-applications \
+      --application-names "$EB_APP_NAME" \
+      --region "$EB_REGION" \
+      --query "Applications[].ApplicationName" \
+      --output text | grep -q "$EB_APP_NAME"; then
+      
+      echo "Elastic Beanstalk application found. Deleting..."
+      aws elasticbeanstalk delete-application \
+        --application-name "$EB_APP_NAME" \
+        --terminate-env-by-force \
+        --region "$EB_REGION"
+    else
+      echo "No Elastic Beanstalk application found. Skipping deletion."
+    fi
+    
+    # Check if S3 bucket exists before attempting to empty and delete it
+    echo "Checking for S3 deployment bucket..."
+    if aws s3api head-bucket --bucket "$S3_BUCKET" --region "$EB_REGION" 2>/dev/null; then
+      echo "S3 deployment bucket found. Emptying and deleting..."
+      aws s3 rm "s3://$S3_BUCKET" --recursive --region "$EB_REGION"
+      aws s3 rb "s3://$S3_BUCKET" --force --region "$EB_REGION"
+    else
+      echo "No S3 deployment bucket found. Skipping deletion."
+    fi
+    
+    # Change to infrastructure directory
+    cd "$PROJECT_ROOT/infra"
+    
+    # Initialize Terraform (if needed)
+    echo "Initializing Terraform..."
+    terraform init
+    
+    # Plan destruction
+    echo "Planning infrastructure destruction..."
+    terraform plan -destroy -out=tfdestroyplan
+    
     # Apply destruction plan
-    echo "Destroying infrastructure..."
+    echo "Destroying remaining infrastructure..."
     terraform apply tfdestroyplan
     
     echo "Infrastructure destruction completed."

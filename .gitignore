@@ -97,3 +97,23 @@ report.py
 
 # Test
 test/
+
+# macOS system files
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+
+# Windows system files
+Thumbs.db
+[Dd]esktop.ini
+
+# AWS credentials and configuration
+.aws/
+*.pem
+
+# Visual Studio Code specific files
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json

@@ -7,9 +7,9 @@ const router = Router();
 const uploadController = new UploadController();
 
 router.post(
-  "/:sessionId/:itemId",
+  "/:teamId/:itemId",
   [
-    param("sessionId").isString().notEmpty(),
+    param("teamId").isString().notEmpty(),
     param("itemId").isString().notEmpty()
   ],
   validateRequest,

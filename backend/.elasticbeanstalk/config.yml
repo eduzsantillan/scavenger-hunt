@@ -1,9 +1,9 @@
 branch-defaults:
   main:
-    environment: scavenger-hunt-backend-env
+    environment: scavenger-hunt-env
     group_suffix: null
 global:
-  application_name: scavenger-hunt-backend
+  application_name: scavenger-hunt-app
   default_ec2_keyname: null
   default_platform: Node.js 18
   default_region: us-east-1

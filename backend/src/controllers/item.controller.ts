@@ -8,25 +8,25 @@ export class ItemController {
     this.itemService = new ItemService();
   }
 
-  getItemsByThemeId = async (req: Request, res: Response) => {
+  getItemById = async (req: Request, res: Response) => {
     try {
-      const { themeId } = req.params;
-      const items = await this.itemService.getItemsByThemeId(themeId);
+      const { itemId } = req.params;
+      const item = await this.itemService.getItemById(itemId);
 
-      if (!items.length) {
+      if (!item) {
         return res.status(404).json({
-          message: `No items found for theme ID: ${themeId}`,
+          message: `Item with ID ${itemId} not found`,
         });
       }
 
-      return res.status(200).json(items);
+      return res.status(200).json(item);
     } catch (error) {
       console.error(
-        `Error fetching items for theme ${req.params.themeId}:`,
+        `Error fetching item with ID ${req.params.itemId}:`,
         error
       );
       return res.status(500).json({
-        message: "Failed to fetch items for the specified theme",
+        message: "Failed to fetch item details",
       });
     }
   };
